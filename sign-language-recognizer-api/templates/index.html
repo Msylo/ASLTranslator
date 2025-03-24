@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Browser to Flask Video Stream</title>
+    <style>
+      .video-container {
+        display: flex;
+        gap: 20px;
+        margin-top: 20px;
+      }
+      video, img {
+        border: 1px solid #333;
+        width: 320px;
+        height: 240px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Browser Webcam</h1>
+
+    <div>
+      <button id="startBtn">Start Webcam</button>
+    </div>
+
+    <div class="video-container">
+      <!-- Live video from the webcam -->
+      <video id="video" autoplay playsinline></video>
+      <!-- Processed video coming back from the server -->
+      <img id="processed" alt="Processed feed will appear here" />
+    </div>
+
+    <!-- Hidden canvas to capture frames -->
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const processedImg = document.getElementById('processed');
+      const startBtn = document.getElementById('startBtn');
+      let stream = null;
+      let captureInterval = null;
+
+      // 1. Request camera access and display in <video>
+      startBtn.addEventListener('click', async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+          video.srcObject = stream;
+
+          // Begin capturing frames on an interval
+          if (!captureInterval) {
+            captureInterval = setInterval(captureAndSendFrame, 200); 
+            // 200 ms ~ 5 fps. Adjust to taste.
+          }
+        } catch (err) {
+          console.error('Error accessing webcam:', err);
+          alert('Could not access webcam. Check console or permissions.');
+        }
+      });
+
+      // 2. Capture the current frame and send to server
+      async function captureAndSendFrame() {
+        if (!stream) return;
+
+        // Match canvas size to video frame
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Convert canvas to base64 image
+        const dataURL = canvas.toDataURL('image/png'); 
+
+        try {
+          const response = await fetch('/process_frame', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataURL })
+          });
+          const result = await response.json();
+
+          if (result.processed_image) {
+            processedImg.src = result.processed_image;
+          } else {
+            console.error('No processed_image in response:', result);
+          }
+        } catch (error) {
+          console.error('Error sending frame to server:', error);
+        }
+      }
+    </script>
+  </body>
+</html>
